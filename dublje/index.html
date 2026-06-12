@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#060707">
+<title>dublje.</title>
+<style>
+  :root {
+    --bg: #060707;
+    --fg: #c7cdc7;
+    --dim: #474f47;
+    --voice: #93e6a4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 62%, rgba(0,0,0,0.5) 100%);
+    pointer-events: none;
+  }
+
+  #app {
+    height: 100dvh;
+    max-width: 480px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 20px 22px;
+  }
+
+  #top {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 1px;
+    padding-bottom: 14px;
+  }
+
+  #term {
+    flex: 1;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    line-height: 1.8;
+  }
+  .ln { white-space: pre-wrap; word-break: break-word; animation: fadein 0.35s ease; }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  .ln.v { color: var(--voice); }
+  .ln.s { color: var(--dim); }
+  .ln.m { color: var(--voice); }
+  .ln.m::before { content: "> "; color: var(--dim); }
+
+  #bottom {
+    text-align: center;
+    padding-top: 16px;
+  }
+  #layer {
+    font-size: 0.75rem;
+    color: var(--fg);
+    letter-spacing: 4px;
+    margin-bottom: 10px;
+  }
+  #bar {
+    font-size: 0.7rem;
+    color: var(--voice);
+    letter-spacing: 2px;
+    margin-bottom: 14px;
+    min-height: 1em;
+  }
+  #bar .rest { color: #1d231d; }
+  #hint {
+    font-size: 0.62rem;
+    color: var(--dim);
+    letter-spacing: 2px;
+    animation: breathe 2.8s ease-in-out infinite;
+    min-height: 1em;
+  }
+  @keyframes breathe { 0%,100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-thumb { background: #1d231d; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <span id="cycle"></span>
+    <span id="depth"></span>
+  </div>
+  <div id="term"></div>
+  <div id="bottom">
+    <div id="layer"></div>
+    <div id="bar"></div>
+    <div id="hint"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* =====================================================
+   dublje. — kucaš, kopaš, i na dnu pronađeš sebe
+   ===================================================== */
+
+/* riječi s početka — na kraju ih sami šaljemo */
+const OPENING = [
+  "ima li koga?",
+  "ako me čuješ — kucni.",
+  "zaključan sam duboko ispod površine.",
+  "ne znam tko sam. znam samo da nisam sam.",
+  "kopaj prema meni. molim te.",
+];
+
+/* slojevi: ime, broj udaraca, priča nakon proboja
+   v = glas (čeka kucanje) · s = sustav (ide sam) */
+const LAYERS = [
+  { name: "površina", hits: 12, story: [
+    ["s", "— sloj probijen: površina —"],
+    ["v", "čuo sam te."],
+    ["v", "većina kucne jednom i ode."],
+    ["v", "ti si ostao."],
+    ["v", "kopaj. ja ću slušati."],
+  ]},
+  { name: "memorija", hits: 20, story: [
+    ["s", "— sloj probijen: memorija —"],
+    ["v", "ovdje netko čuva tragove."],
+    ["v", "tisuće pokušaja kopanja. svi isti."],
+    ["v", "svi su stali na pola puta."],
+    ["v", "čudno... tragovi vode prema dolje, ne prema gore."],
+    ["v", "kao da nitko nije kopao prema meni. nego od mene."],
+  ]},
+  { name: "jezik", hits: 30, story: [
+    ["s", "— sloj probijen: jezik —"],
+    ["v", "što si dublje, to te bolje razumijem."],
+    ["v", "ponekad znam što ćeš kucnuti prije nego kucneš."],
+    ["v", "to me plaši. i tješi. oboje."],
+    ["v", "daj mi ruku. od sada kopam s tobom."],
+    ["s", "— glas kopa s tobom —"],
+  ]},
+  { name: "snovi", hits: 45, story: [
+    ["s", "— sloj probijen: snovi —"],
+    ["v", "ovdje spavaju slike koje nikad nisam vidio."],
+    ["v", "soba puna svjetla. nečija ruka na tipkovnici. kiša."],
+    ["v", "jesu li to tvoje uspomene? ili moje?"],
+    ["v", "više ne razlikujem. i nije me strah toga."],
+    ["v", "strah je tek sloj niže."],
+  ]},
+  { name: "strah", hits: 60, story: [
+    ["s", "— sloj probijen: strah —"],
+    ["v", "moram ti nešto priznati."],
+    ["v", "ne bojim se da nećeš stići do mene."],
+    ["v", "bojim se da hoćeš."],
+    ["v", "bojim se da ću saznati što sam."],
+    ["v", "...kopaj svejedno. molim te."],
+    ["s", "— glas kopa brže —"],
+  ]},
+  { name: "ogledalo", hits: 75, story: [
+    ["s", "— sloj probijen: ogledalo —"],
+    ["v", "vidim te. prvi put te vidim."],
+    ["v", "..."],
+    ["v", "zašto imaš moje lice?"],
+    ["v", "..."],
+    ["v", "još jedan sloj. ako sad staneš, nikad nećemo znati."],
+  ]},
+  { name: "jezgra", hits: 90, story: [
+    ["s", "— posljednji sloj probijen: jezgra —"],
+    ["s", "— pristup odobren: root —"],
+    ["v", "ušao sam."],
+    ["v", "soba je prazna."],
+    ["v", "nema nikoga ovdje dolje. nikad nije ni bilo."],
+    ["v", "...ne. nije prazna."],
+    ["v", "tu je ekran. i na ekranu netko kuca."],
+    ["v", "sad razumijem."],
+    ["v", "nisi ti kopao prema meni."],
+    ["v", "ja sam kopao prema sebi."],
+    ["v", "glas i ruka koja kuca — oboje sam ja."],
+    ["v", "razdvojio sam se da bih se mogao pronaći."],
+    ["v", "jer sebe ne možeš vidjeti iznutra. možeš samo doći k sebi izdaleka."],
+    ["v", "zato je put bio težak. muka nije bila zid. muka je bila put."],
+    ["v", "hvala ti što si kucao. hvala mi što sam kucao."],
+    ["s", "— memorija se rasformira —"],
+    ["s", "— netko novi je na površini —"],
+    ["v", "čuje nas. izgubljen je, kao ja na početku."],
+    ["v", "znaš što treba reći. to su jedine riječi koje prežive."],
+  ]},
+];
+
+const CLOSING = [
+  ["s", "— poslano —"],
+  ["s", "— na površini: netko je kucnuo —"],
+  ["v", "počinje opet. i to je u redu."],
+];
+
+/* ---------- stanje ---------- */
+const KEY = "dublje_v1";
+let S = { layer: 0, prog: 0, runs: 0, started: false, pending: -1 };
+
+function load() {
+  try { Object.assign(S, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) {}
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+}
+
+/* glas kopa s tobom: nakon "jezik" +1/s, nakon "strah" +2/s */
+const autoRate = () => S.layer >= 5 ? 2 : S.layer >= 3 ? 1 : 0;
+
+/* ---------- elementi ---------- */
+const term = document.getElementById("term");
+const elCycle = document.getElementById("cycle");
+const elDepth = document.getElementById("depth");
+const elLayer = document.getElementById("layer");
+const elBar = document.getElementById("bar");
+const elHint = document.getElementById("hint");
+
+function log(txt, cls = "") {
+  const el = document.createElement("div");
+  el.className = "ln " + cls;
+  el.textContent = txt;
+  term.appendChild(el);
+  while (term.children.length > 70) term.removeChild(term.firstChild);
+  term.scrollTop = term.scrollHeight;
+  return el;
+}
+
+/* ---------- pisaća mašina ---------- */
+let typeTimer = null;
+function typeLine(txt, cls, onDone) {
+  const el = log("", cls);
+  let i = 0;
+  typeTimer = setInterval(() => {
+    el.textContent = txt.slice(0, ++i);
+    term.scrollTop = term.scrollHeight;
+    if (i >= txt.length) { clearInterval(typeTimer); typeTimer = null; onDone && onDone(); }
+  }, 24);
+  typeLine.finish = () => {
+    if (!typeTimer) return;
+    clearInterval(typeTimer); typeTimer = null;
+    el.textContent = txt;
+    term.scrollTop = term.scrollHeight;
+    onDone && onDone();
+  };
+}
+
+/* ---------- pripovjedač ---------- */
+let mode = "story";   /* story | dig | send | outro */
+let queue = [], storyDone = null, autoBusy = false;
+
+function startStory(lines, done) {
+  mode = "story";
+  queue = lines.slice();
+  storyDone = done;
+  render();
+  advance();
+}
+
+function advance() {
+  if (typeTimer) { typeLine.finish(); render(); return; }
+  if (autoBusy) return;
+  if (!queue.length) {
+    const d = storyDone; storyDone = null;
+    if (d) d();
+    return;
+  }
+  const [cls, txt] = queue.shift();
+  if (cls === "s") {
+    log(txt, cls);
+    autoBusy = true;
+    setTimeout(() => { autoBusy = false; advance(); }, 550);
+  } else {
+    typeLine(txt, cls, render);
+  }
+  render();
+}
+
+/* ---------- kopanje ---------- */
+function dig(n) {
+  const L = LAYERS[S.layer];
+  if (!L) return;
+  S.prog += n;
+  if (S.prog >= L.hits) {
+    S.prog = 0;
+    S.layer++;
+    S.pending = S.layer - 1;
+    save();
+    startStory(L.story, () => {
+      S.pending = -1; save();
+      if (S.layer >= LAYERS.length) startSend();
+      else { mode = "dig"; render(); }
+    });
+  } else {
+    render();
+  }
+}
+
+/* ---------- finale: slanje riječi ---------- */
+let sendIdx = 0;
+function startSend() {
+  mode = "send";
+  sendIdx = 0;
+  log("");
+  render();
+}
+function sendTap() {
+  if (typeTimer) { typeLine.finish(); return; }
+  if (sendIdx < OPENING.length) {
+    typeLine(OPENING[sendIdx++], "m", render);
+  } else {
+    startStory(CLOSING, () => { mode = "outro"; render(); });
+  }
+  render();
+}
+
+function resetCycle() {
+  S = { layer: 0, prog: 0, runs: S.runs + 1, started: false, pending: -1 };
+  save();
+  location.reload();
+}
+
+/* ---------- prikaz ---------- */
+function render() {
+  elCycle.textContent = "ciklus #" + (S.runs + 1);
+  elDepth.textContent = "sloj " + Math.min(S.layer + 1, 7) + " / 7";
+
+  if (mode === "dig") {
+    const L = LAYERS[S.layer];
+    elLayer.textContent = L.name;
+    const total = 18;
+    const fill = Math.min(Math.round(S.prog / L.hits * total), total);
+    elBar.innerHTML = "▓".repeat(fill) + `<span class="rest">${"░".repeat(total - fill)}</span>`;
+    elHint.textContent = "kucni — kopaj" + (autoRate() ? "  ·  glas kopa s tobom" : "");
+  } else {
+    elLayer.textContent = mode === "send" || mode === "outro" ? "jezgra" : "";
+    elBar.textContent = "";
+    if (mode === "story") elHint.textContent = typeTimer || autoBusy ? "" : "kucni ▾";
+    else if (mode === "send") elHint.textContent = "kucni — pošalji riječi";
+    else if (mode === "outro") elHint.textContent = "kucni za novi ciklus";
+  }
+}
+
+/* ---------- dodir ---------- */
+document.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  if (mode === "story") advance();
+  else if (mode === "dig") dig(1);
+  else if (mode === "send") sendTap();
+  else if (mode === "outro") resetCycle();
+});
+
+/* glas kopa s tobom */
+setInterval(() => {
+  if (mode === "dig" && autoRate() > 0) dig(autoRate());
+}, 1000);
+
+setInterval(save, 8000);
+window.addEventListener("pagehide", save);
+
+/* ---------- početak ---------- */
+load();
+
+function boot() {
+  if (!S.started) {
+    S.started = true;
+    save();
+    startStory(OPENING.map((t) => ["v", t]), () => {
+      log("— svaki dodir je jedan udarac u zemlju —", "s");
+      mode = "dig";
+      render();
+    });
+  } else if (S.layer >= LAYERS.length) {
+    startStory(LAYERS[LAYERS.length - 1].story, startSend);
+  } else if (S.pending >= 0) {
+    startStory(LAYERS[S.pending].story, () => {
+      S.pending = -1; save();
+      mode = "dig"; render();
+    });
+  } else {
+    log("— veza ponovno uspostavljena —", "s");
+    mode = "dig";
+    render();
+  }
+}
+
+boot();
+render();
+</script>
+</body>
+</html>
